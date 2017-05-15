@@ -10,7 +10,9 @@ using SchemaZen.Library.Models;
 namespace SchemaZen.Tests {
 	[TestFixture]
 	public class TableTester {
-		private List<List<string>> TabDataToList(string data) {
+        private readonly IDataImportExportHandler _importExportHandler = new TsvDataImportExportHandler();
+
+        private List<List<string>> TabDataToList(string data) {
 			var lines = new List<List<string>>();
 			foreach (var line in data.Split('\t')) {
 				lines.Add(new List<string>());
@@ -115,10 +117,9 @@ namespace SchemaZen.Tests {
 			writer.Write(dataIn);
 			writer.Flush();
 			writer.Close();
-
-			t.ImportData(conn, filename);
+            _importExportHandler.ImportData(t, conn, filename);
 			var sw = new StringWriter();
-			t.ExportData(conn, sw);
+            _importExportHandler.ExportData(t, conn, sw);
 			Assert.AreEqual(dataIn, sw.ToString());
 
 			File.Delete(filename);
@@ -156,9 +157,9 @@ namespace SchemaZen.Tests {
 			writer.Close();
 
 			try {
-				t.ImportData(conn, filename);
+                _importExportHandler.ImportData(t, conn, filename);
 				var sw = new StringWriter();
-				t.ExportData(conn, sw);
+                _importExportHandler.ExportData(t, conn, sw);
 				Assert.AreEqual(dataIn, sw.ToString());
 			} finally {
 				File.Delete(filename);
@@ -171,7 +172,8 @@ namespace SchemaZen.Tests {
 			var t = new Table("dbo", "Dummy");
 			t.Columns.Add(new Column("id", "int", false, null));
 			t.Columns.Add(new Column("createdTime", "datetime", false, null));
-			t.Columns.Find("id").Identity = new Identity(1, 1);
+            t.Columns.Add(new Column("modifiedTime", "datetime2", false, null));
+            t.Columns.Find("id").Identity = new Identity(1, 1);
 			t.AddConstraint(new Constraint("PK_Status", "PRIMARY KEY", "id"));
 
 			var conn = TestHelper.GetConnString("TESTDB");
@@ -181,9 +183,9 @@ namespace SchemaZen.Tests {
 			DBHelper.ExecBatchSql(conn, t.ScriptCreate());
 
 			var dataIn =
-				@"1	2017-02-21 11:20:30.1
-2	2017-02-22 11:20:30.12
-3	2017-02-23 11:20:30.123
+                @"1	2017-02-21 11:20:30.1	2017-02-21 11:20:30.1
+2	2017-02-22 11:20:30.12	2017-02-22 11:20:30.12
+3	2017-02-23 11:20:30.123	2017-02-23 11:20:30.123
 ";
 			var filename = Path.GetTempFileName();
 
@@ -193,9 +195,9 @@ namespace SchemaZen.Tests {
 			writer.Close();
 
 			try {
-				t.ImportData(conn, filename);
+                _importExportHandler.ImportData(t, conn, filename);
 				var sw = new StringWriter();
-				t.ExportData(conn, sw);
+                _importExportHandler.ExportData(t, conn, sw);
 				Assert.AreEqual(dataIn, sw.ToString());
 			} finally {
 				File.Delete(filename);
@@ -233,9 +235,9 @@ namespace SchemaZen.Tests {
 			writer.Close();
 
 			try {
-				t.ImportData(conn, filename);
+                _importExportHandler.ImportData(t, conn, filename);
 				var sw = new StringWriter();
-				t.ExportData(conn, sw);
+                _importExportHandler.ExportData(t, conn, sw);
 				Assert.AreEqual(dataIn, sw.ToString());
 			} finally {
 				File.Delete(filename);
@@ -267,7 +269,7 @@ namespace SchemaZen.Tests {
 			var writer = File.CreateText(filename);
 			StringBuilder sb = new StringBuilder();
 
-			for (var i = 0; i < Table.RowsInBatch * 4.2; i++) {
+			for (var i = 0; i < AbstractDataImportExportHandler.RowsInBatch * 4.2; i++) {
 				sb.AppendLine(i.ToString());
 				writer.WriteLine(i.ToString());
 			}
@@ -279,9 +281,9 @@ namespace SchemaZen.Tests {
 			Assert.AreEqual(dataIn, File.ReadAllText(filename)); // just prove that the file and the string are the same, to make the next assertion meaningful!
 
 			try {
-				t.ImportData(conn, filename);
+                _importExportHandler.ImportData(t, conn, filename);
 				var sw = new StringWriter();
-				t.ExportData(conn, sw);
+                _importExportHandler.ExportData(t, conn, sw);
 
 				Assert.AreEqual(dataIn, sw.ToString());
 			} finally {
@@ -298,7 +300,8 @@ namespace SchemaZen.Tests {
 			t.Columns.Add(new Column("c", "bit", false, null));
 			t.Columns.Add(new Column("d", "char", 10, false, null));
 			t.Columns.Add(new Column("e", "datetime", false, null));
-			t.Columns.Add(new Column("f", "decimal", 18, 0, false, null));
+            t.Columns.Add(new Column("e2", "datetime2", false, null));
+            t.Columns.Add(new Column("f", "decimal", 18, 0, false, null));
 			t.Columns.Add(new Column("g", "float", false, null));
 			t.Columns.Add(new Column("h", "image", false, null));
 			t.Columns.Add(new Column("i", "int", false, null));
