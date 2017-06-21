@@ -38,7 +38,8 @@ namespace SchemaZen.Library {
                 cn.Open();
                 using (var cm = cn.CreateCommand())
                 {
-                    cm.CommandText = sql.ToString();
+	                cm.CommandTimeout = DBHelper.CommandTimeout;
+					cm.CommandText = sql.ToString();
                     using (var dr = cm.ExecuteReader())
                     {
                         ExportData(dr, cols, data);

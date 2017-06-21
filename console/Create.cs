@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using ManyConsole;
 using SchemaZen.Library;
 using SchemaZen.Library.Command;
@@ -16,6 +15,8 @@ namespace SchemaZen.console {
 		public override int Run(string[] remainingArguments) {
 			_logger = new Logger(Verbose);
 
+			DBHelper.CommandTimeout = CommandTimeout;
+
 			var createCommand = new CreateCommand {
 				ConnectionString = ConnectionString,
 				DbName = DbName,
@@ -23,6 +24,7 @@ namespace SchemaZen.console {
 				ScriptDir = ScriptDir,
 				Server = Server,
 				User = User,
+				CommandTimeout = CommandTimeout,
 				Logger = _logger,
 				Overwrite = Overwrite,
                 DataFileType = DataFileType

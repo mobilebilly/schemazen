@@ -50,6 +50,8 @@ namespace SchemaZen.console {
 					return 1;
 			}
 
+			DBHelper.CommandTimeout = CommandTimeout;
+
 			var scriptCommand = new ScriptCommand {
 				ConnectionString = ConnectionString,
 				DbName = DbName,
@@ -57,6 +59,7 @@ namespace SchemaZen.console {
 				ScriptDir = ScriptDir,
 				Server = Server,
 				User = User,
+				CommandTimeout = CommandTimeout,
 				Logger = _logger,
 				Overwrite = Overwrite,
                 DataFileType = DataFileType
