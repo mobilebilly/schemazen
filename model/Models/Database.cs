@@ -174,6 +174,7 @@ namespace SchemaZen.Library.Models {
 			using (var cn = new SqlConnection(Connection)) {
 				cn.Open();
 				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = DBHelper.CommandTimeout;
 					LoadProps(cm);
 					LoadSchemas(cm);
 					LoadTables(cm);

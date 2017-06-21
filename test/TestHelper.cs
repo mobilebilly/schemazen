@@ -26,6 +26,7 @@ namespace SchemaZen.Tests {
 				}
 				cn.Open();
 				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = DBHelper.CommandTimeout;
 					cm.CommandText = sql;
 					cm.ExecuteNonQuery();
 				}
@@ -60,6 +61,7 @@ namespace SchemaZen.Tests {
 			using (var cn = new SqlConnection(ConfigHelper.TestDB)) {
 				cn.Open();
 				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = DBHelper.CommandTimeout;
 					cm.CommandText = "select db_id('" + dbName + "')";
 					exists = (!ReferenceEquals(cm.ExecuteScalar(), DBNull.Value));
 				}

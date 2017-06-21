@@ -29,6 +29,10 @@ namespace SchemaZen.console {
 				"f|databaseFilesPath=",
 				"Path to database data and log files.",
 				o => DatabaseFilesPath = o);
+			HasOption(
+				"commandTimeout=",
+				"Sql command timeout in seconds.",
+				(int o) => CommandTimeout = o);
 		}
 
 		protected string Server { get; set; }
@@ -36,6 +40,7 @@ namespace SchemaZen.console {
 		protected string ConnectionString { get; set; }
 		protected string User { get; set; }
 		protected string Pass { get; set; }
+		protected int CommandTimeout { get; set; }
 		protected string ScriptDir { get; set; }
 		protected bool Overwrite { get; set; }
 		protected bool Verbose { get; set; }

@@ -10,6 +10,7 @@ namespace SchemaZen.Library.Command {
 		public string ConnectionString { get; set; }
 		public string User { get; set; }
 		public string Pass { get; set; }
+		public int CommandTimeout { get; set; }
 		public string ScriptDir { get; set; }
 		public ILogger Logger { get; set; }
 		public bool Overwrite { get; set; }

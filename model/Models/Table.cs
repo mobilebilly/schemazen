@@ -175,6 +175,7 @@ end
 			using (var cn = new SqlConnection(conn)) {
 				cn.Open();
 				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = DBHelper.CommandTimeout;
 					cm.CommandText = sql.ToString();
 					using (var dr = cm.ExecuteReader()) {
 						while (dr.Read()) {

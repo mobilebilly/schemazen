@@ -6,12 +6,14 @@ using SchemaZen.Library.Models;
 namespace SchemaZen.Library {
 	public class DBHelper {
 		public static bool EchoSql { get; set; } = false;
+		public static int CommandTimeout { get; set; } = 30;
 
 		public static void ExecSql(string conn, string sql) {
 			if (EchoSql) Console.WriteLine(sql);
 			using (var cn = new SqlConnection(conn)) {
 				cn.Open();
 				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = CommandTimeout;
 					cm.CommandText = sql;
 					cm.ExecuteNonQuery();
 				}
@@ -23,6 +25,8 @@ namespace SchemaZen.Library {
 			using (var cn = new SqlConnection(conn)) {
 				cn.Open();
 				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = CommandTimeout;
+
 					foreach (var script in BatchSqlParser.SplitBatch(sql)) {
 						if (EchoSql) Console.WriteLine(script);
 						cm.CommandText = script;
@@ -81,6 +85,7 @@ LOG ON
 			using (var cn = new SqlConnection(cnBuilder.ToString())) {
 				cn.Open();
 				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = CommandTimeout;
 					cm.CommandText = "select db_id('" + dbName + "')";
 					exists = (!ReferenceEquals(cm.ExecuteScalar(), DBNull.Value));
 				}
