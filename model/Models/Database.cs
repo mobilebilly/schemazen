@@ -5,8 +5,10 @@ using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using SchemaZen.Library.Models.Comparers;
 
 namespace SchemaZen.Library.Models {
@@ -68,6 +70,7 @@ namespace SchemaZen.Library.Models {
 		public List<Table> DataTables { get; set; } = new List<Table>();
 		public string Dir { get; set; } = "";
 		public List<ForeignKey> ForeignKeys { get; set; } = new List<ForeignKey>();
+		private IDictionary<string, ForeignKey> _foreignKeysMap;
 		public string Name { get; set; }
 
 		public List<DbProp> Props { get; set; } = new List<DbProp>();
@@ -76,6 +79,8 @@ namespace SchemaZen.Library.Models {
 		public List<Synonym> Synonyms { get; set; } = new List<Synonym>();
 		public List<Table> TableTypes { get; set; } = new List<Table>();
 		public List<Table> Tables { get; set; } = new List<Table>();
+		private IDictionary<string, Table> _tablesMap;
+		private IDictionary<string, Table> _tableTypesMap;
 		public List<UserDefinedType> UserDefinedTypes { get; set; } = new List<UserDefinedType>();
 		public List<Role> Roles { get; set; } = new List<Role>();
 		public List<SqlUser> Users { get; set; } = new List<SqlUser>();
@@ -87,11 +92,19 @@ namespace SchemaZen.Library.Models {
 		}
 
 		public Table FindTable(string name, string owner, bool isTableType = false) {
-			return FindTableBase(isTableType ? TableTypes : Tables, name, owner);
+			return FindTableBase(isTableType ? _tableTypesMap : _tablesMap, name, owner);
 		}
 
-		private static Table FindTableBase(IEnumerable<Table> tables, string name, string owner) {
-			return tables.FirstOrDefault(t => t.Name == name && t.Owner == owner);
+		private static Table FindTableBase(IDictionary<string, Table> tablesMap, string name, string owner) {
+			var key = name + ":" + owner;
+			
+			Table table;
+			
+			if (tablesMap.TryGetValue(key, out table)) {
+				return table;
+			}
+
+			return null;
 		}
 
 		public Constraint FindConstraint(string name) {
@@ -99,7 +112,16 @@ namespace SchemaZen.Library.Models {
 		}
 
 		public ForeignKey FindForeignKey(string name, string owner) {
-			return ForeignKeys.FirstOrDefault(fk => fk.Name == name && fk.Table.Owner == owner);
+			var key = name + ":" + owner;
+
+			ForeignKey fk;
+
+			if (_foreignKeysMap.TryGetValue(key, out fk))
+			{
+				return fk;
+			}
+
+			return null;
 		}
 
 		public Routine FindRoutine(string name, string schema) {
@@ -172,27 +194,50 @@ namespace SchemaZen.Library.Models {
 			Synonyms.Clear();
 			Roles.Clear();
 
+			_tablesMap = null;
+			_tableTypesMap = null;
+			_foreignKeysMap = null;
+
+			Task.WaitAll(
+				Run(LoadProps),
+				Run(LoadSchemas),
+				Run(LoadTables),
+				Run(LoadUserDefinedTypes),
+				Run(LoadRoutines),
+				Run(LoadXmlSchemas),
+				Run(LoadCLRAssemblies),
+				Run(LoadUsersAndLogins),
+				Run(LoadSynonyms),
+				Run(LoadRoles)
+			);
+
+			Task.WaitAll(
+				Run(LoadColumns),
+				Run(LoadForeignKeys),
+				Run(LoadConstraintsAndIndexes),
+				Run(LoadCheckConstraints)
+			);
+
+			Task.WaitAll(
+				Run(LoadColumnIdentities),
+				Run(LoadColumnDefaults),
+				Run(LoadColumnComputes)
+			);
+		}
+		
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private Task Run(Action<SqlCommand> loadCommand) {
+			return Task.Run(() => LoadWithCommand(loadCommand));
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private void LoadWithCommand(Action<SqlCommand> loadCommand) { 
 			using (var cn = new SqlConnection(Connection)) {
 				cn.Open();
+				
 				using (var cm = cn.CreateCommand()) {
 					cm.CommandTimeout = DBHelper.CommandTimeout;
-					LoadProps(cm);
-					LoadSchemas(cm);
-					LoadTables(cm);
-					LoadUserDefinedTypes(cm);
-					LoadColumns(cm);
-					LoadColumnIdentities(cm);
-					LoadColumnDefaults(cm);
-					LoadColumnComputes(cm);
-					LoadConstraintsAndIndexes(cm);
-					LoadCheckConstraints(cm);
-					LoadForeignKeys(cm);
-					LoadRoutines(cm);
-					LoadXmlSchemas(cm);
-					LoadCLRAssemblies(cm);
-					LoadUsersAndLogins(cm);
-					LoadSynonyms(cm);
-					LoadRoles(cm);
+					loadCommand(cm);
 				}
 			}
 		}
@@ -531,6 +576,8 @@ from #ScriptedRoles
 				}
 			}
 
+			_foreignKeysMap = ForeignKeys.AsParallel().ToDictionary(GetNameKey, c => c);
+
 			//get foreign key props
 			cm.CommandText = @"
 					select 
@@ -762,7 +809,7 @@ order by fk.name, fkc.constraint_column_id
 				order by t.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION
 ";
 			using (var dr = cm.ExecuteReader()) {
-				LoadColumnsBase(dr, Tables);
+				LoadColumnsBase(dr, _tablesMap);
 			}
 
 			try {
@@ -791,14 +838,14 @@ order by fk.name, fkc.constraint_column_id
 				order by s.name, tt.name, c.column_id
 ";
 				using (var dr = cm.ExecuteReader()) {
-					LoadColumnsBase(dr, TableTypes);
+					LoadColumnsBase(dr, _tableTypesMap);
 				}
 			} catch (SqlException) {
 				// SQL server version doesn't support table types, nothing to do
 			}
 		}
 
-		private static void LoadColumnsBase(IDataReader dr, List<Table> tables) {
+		private static void LoadColumnsBase(IDataReader dr, IDictionary<string, Table> tables) {
 			Table table = null;
 
 			while (dr.Read()) {
@@ -845,6 +892,8 @@ order by fk.name, fkc.constraint_column_id
 				LoadTablesBase(dr, false, Tables);
 			}
 
+			_tablesMap = Tables.AsParallel().ToDictionary(GetNameKey, t => t);
+
 			//get table types
 			try {
 				cm.CommandText = @"
@@ -858,11 +907,22 @@ order by fk.name, fkc.constraint_column_id
 				using (var dr = cm.ExecuteReader()) {
 					LoadTablesBase(dr, true, TableTypes);
 				}
+
+				_tableTypesMap = TableTypes.AsParallel().ToDictionary(GetNameKey, t => t);
 			} catch (SqlException) {
 				// SQL server version doesn't support table types, nothing to do here
 			}
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static string GetNameKey(Table t) {
+			return t.Name + ":" + t.Owner;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static string GetNameKey(ForeignKey t) {
+			return t.Name + ":" + t.Table.Owner;
+		}
 
 		private void LoadUserDefinedTypes(SqlCommand cm) {
 			//get types
@@ -1226,23 +1286,29 @@ where name = @dbname
 				Directory.CreateDirectory(Dir);
 			}
 
-			WritePropsScript(log);
-			WriteSchemaScript(log);
-			WriteScriptDir("tables", Tables.ToArray(), log);
-			WriteScriptDir("table_types", TableTypes.ToArray(), log);
-			WriteScriptDir("user_defined_types", UserDefinedTypes.ToArray(), log);
-			WriteScriptDir("foreign_keys", ForeignKeys.OrderBy(x => x, ForeignKeyComparer.Instance).ToArray(), log);
+			Task.WaitAll(
+				Task.Run(() => WritePropsScript(log)),
+				Task.Run(() => WriteSchemaScript(log)),
+				Task.Run(() => WriteScriptDirInParallel("tables", Tables.ToArray(), log)),
+				Task.Run(() => WriteScriptDirInParallel("table_types", TableTypes.ToArray(), log)),
+				Task.Run(() => WriteScriptDirInParallel("user_defined_types", UserDefinedTypes.ToArray(), log)),
+				Task.Run(() => WriteScriptDirGrpByFilename("foreign_keys",
+					ForeignKeys.AsParallel().OrderBy(x => x, ForeignKeyComparer.Instance).ToArray(), log)),
+				Task.Run(() => ScriptRoutine(log)),
+				Task.Run(() => WriteScriptDirInParallel("views", ViewIndexes.ToArray(), log)),
+				Task.Run(() => WriteScriptDirInParallel("assemblies", Assemblies.ToArray(), log)),
+				Task.Run(() => WriteScriptDirInParallel("roles", Roles.ToArray(), log)),
+				Task.Run(() => WriteScriptDirInParallel("users", Users.ToArray(), log)),
+				Task.Run(() => WriteScriptDirInParallel("synonyms", Synonyms.ToArray(), log)),
+				Task.Run(() => ExportData(tableHint, log))
+			);
+		}
+
+		private void ScriptRoutine(Action<TraceLevel, string> log) {
 			foreach (var routineType in Routines.GroupBy(x => x.RoutineType)) {
 				var dir = routineType.Key.ToString().ToLower() + "s";
-				WriteScriptDir(dir, routineType.ToArray(), log);
+				WriteScriptDirInParallel(dir, routineType.ToArray(), log);
 			}
-			WriteScriptDir("views", ViewIndexes.ToArray(), log);
-			WriteScriptDir("assemblies", Assemblies.ToArray(), log);
-			WriteScriptDir("roles", Roles.ToArray(), log);
-			WriteScriptDir("users", Users.ToArray(), log);
-			WriteScriptDir("synonyms", Synonyms.ToArray(), log);
-
-			ExportData(tableHint, log);
 		}
 
 		private void WritePropsScript(Action<TraceLevel, string> log) {
@@ -1265,18 +1331,34 @@ where name = @dbname
 			File.WriteAllText($"{Dir}/schemas.sql", text.ToString());
 		}
 
-		private void WriteScriptDir(string name, ICollection<IScriptable> objects, Action<TraceLevel, string> log) {
+		private void WriteScriptDirGrpByFilename(string name, ICollection<IScriptable> objects, Action<TraceLevel, string> log) {
 			if (!objects.Any()) return;
 			if (!_dirs.Contains(name)) return;
 			var dir = Path.Combine(Dir, name);
 			Directory.CreateDirectory(dir);
-			var index = 0;
-			foreach (var o in objects) {
-				log(TraceLevel.Verbose, $"Scripting {name} {++index} of {objects.Count}...{(index < objects.Count ? "\r" : string.Empty)}");
+
+			objects.AsParallel().AsOrdered()
+				.Select(o => new {
+					filePath = Path.Combine(dir, MakeFileName(o) + ".sql"),
+					script = o.ScriptCreate() + "\r\nGO\r\n"
+				}).GroupBy(c => c.filePath)
+				.ForAll(g => File.AppendAllText(g.Key, string.Join("", g.Select(i => i.script))));
+		}
+
+		private void WriteScriptDirInParallel(string name, IScriptable[] objects, Action<TraceLevel, string> log) {
+			if (!objects.Any()) return;
+			if (!_dirs.Contains(name)) return;
+			var dir = Path.Combine(Dir, name);
+			Directory.CreateDirectory(dir);
+			
+			Parallel.For(0, objects.Length, i => {
+				var o = objects[i];
+
+				log(TraceLevel.Verbose, $"Scripting {name} {i} of {objects.Length}...{(i < objects.Length ? "\r" : string.Empty)}");
 				var filePath = Path.Combine(dir, MakeFileName(o) + ".sql");
 				var script = o.ScriptCreate() + "\r\nGO\r\n";
 				File.AppendAllText(filePath, script);
-			}
+			});
 		}
 
 		private static string MakeFileName(object o) {
@@ -1315,22 +1397,25 @@ where name = @dbname
 			}
 			log?.Invoke(TraceLevel.Info, "Exporting data...");
 			var index = 0;
-            
-			foreach (var t in DataTables) {
+
+			DataTables.AsParallel().ForAll(t => {
 				log?.Invoke(TraceLevel.Verbose, $"Exporting data from {t.Owner + "." + t.Name} (table {++index} of {DataTables.Count})...");
 				var filePathAndName = dataDir + "/" + MakeFileName(t) + ImportExportHandler.FileExtension;
 				var sw = File.CreateText(filePathAndName);
-                ImportExportHandler.ExportData(t, Connection, sw, tableHint);
+				ImportExportHandler.ExportData(t, Connection, sw, tableHint);
 
 				sw.Flush();
-				if (sw.BaseStream.Length == 0) {
+				if (sw.BaseStream.Length == 0)
+				{
 					log?.Invoke(TraceLevel.Verbose, $"          No data to export for {t.Owner + "." + t.Name}, deleting file...");
 					sw.Close();
 					File.Delete(filePathAndName);
-				} else {
+				}
+				else
+				{
 					sw.Close();
 				}
-			}
+			});
 		}
 
 		public static string ScriptPropList(IList<DbProp> props) {
@@ -1362,28 +1447,38 @@ where name = @dbname
 			log(TraceLevel.Verbose, "Database schema loaded.");
 			log(TraceLevel.Info, "Importing data...");
 
-			foreach (var f in Directory.GetFiles(dataDir, "*" + ImportExportHandler.FileExtension)) {
-				var fi = new FileInfo(f);
-				var schema = "dbo";
-				var table = Path.GetFileNameWithoutExtension(fi.Name);
-				if (table.Contains(".")) {
-					schema = fi.Name.Split('.')[0];
-					table = fi.Name.Split('.')[1];
-				}
-				var t = FindTable(table, schema);
-				if (t == null) {
-					log(TraceLevel.Warning, $"Warning: found data file '{fi.Name}', but no corresponding table in database...");
-					continue;
-				}
-				try {
-					log(TraceLevel.Verbose, $"Importing data for table {schema}.{table}...");
-                    ImportExportHandler.ImportData(t, Connection, fi.FullName);
-				} catch (SqlBatchException ex) {
-					throw new DataFileException(ex.Message, fi.FullName, ex.LineNumber);
-				} catch (Exception ex) {
-					throw new DataFileException(ex.Message, fi.FullName, -1);
-				}
-			}
+			Directory.GetFiles(dataDir, "*" + ImportExportHandler.FileExtension)
+				.AsParallel()
+				.ForAll(f => {
+					var fi = new FileInfo(f);
+					var schema = "dbo";
+					var table = Path.GetFileNameWithoutExtension(fi.Name);
+					if (table.Contains("."))
+					{
+						schema = fi.Name.Split('.')[0];
+						table = fi.Name.Split('.')[1];
+					}
+					var t = FindTable(table, schema);
+					if (t == null)
+					{
+						log(TraceLevel.Warning, $"Warning: found data file '{fi.Name}', but no corresponding table in database...");
+						return;
+					}
+					try
+					{
+						log(TraceLevel.Verbose, $"Importing data for table {schema}.{table}...");
+						ImportExportHandler.ImportData(t, Connection, fi.FullName);
+					}
+					catch (SqlBatchException ex)
+					{
+						throw new DataFileException(ex.Message, fi.FullName, ex.LineNumber);
+					}
+					catch (Exception ex)
+					{
+						throw new DataFileException(ex.Message, fi.FullName, -1);
+					}
+				});
+
 			log(TraceLevel.Info, "Data imported successfully.");
 		}
 
@@ -1429,6 +1524,10 @@ where name = @dbname
 			// resolve dependencies by trying over and over
 			// if the number of failures stops decreasing then give up
 			var scripts = GetScripts();
+
+			var scriptContent = scripts.AsParallel()
+				.ToDictionary(s => s, File.ReadAllText);
+
 			var errors = new List<SqlFileException>();
 			var prevCount = -1;
 			while (scripts.Count > 0 && (prevCount == -1 || errors.Count < prevCount)) {
@@ -1442,7 +1541,7 @@ where name = @dbname
 				foreach (var f in scripts.ToArray()) {
 					log(TraceLevel.Verbose, $"Executing script {++index} of {total}...{(index < total ? "\r" : string.Empty)}");
 					try {
-						DBHelper.ExecBatchSql(Connection, File.ReadAllText(f));
+						DBHelper.ExecBatchSql(Connection, scriptContent[f]);
 						scripts.Remove(f);
 					} catch (SqlBatchException ex) {
 						errors.Add(new SqlFileException(f, ex));
@@ -1470,15 +1569,16 @@ where name = @dbname
 			// foreign keys
 			if (Directory.Exists(Dir + "/foreign_keys")) {
 				log(TraceLevel.Info, "Adding foreign key constraints...");
-				foreach (var f in Directory.GetFiles(Dir + "/foreign_keys", "*.sql")) {
+				Directory.GetFiles(Dir + "/foreign_keys", "*.sql").AsParallel().ForAll(f => { 
 					try {
 						DBHelper.ExecBatchSql(Connection, File.ReadAllText(f));
 					} catch (SqlBatchException ex) {
 						//throw new SqlFileException(f, ex);
 						errors.Add(new SqlFileException(f, ex));
 					}
-				}
+				});
 			}
+
 			if (errors.Count > 0) {
 				var ex = new BatchSqlFileException {
 					Exceptions = errors
@@ -1488,12 +1588,11 @@ where name = @dbname
 		}
 
 		private List<string> GetScripts() {
-			var scripts = new List<string>();
-			foreach (
-				var dirPath in _dirs.Where(dir => dir != "foreign_keys").Select(dir => Dir + "/" + dir).Where(Directory.Exists)) {
-				scripts.AddRange(Directory.GetFiles(dirPath, "*.sql"));
-			}
-			return scripts;
+			return _dirs.AsParallel().AsOrdered()
+				.Where(dir => dir != "foreign_keys")
+				.Select(dir => Dir + "/" + dir)
+				.Where(Directory.Exists).SelectMany(dirPath => Directory.GetFiles(dirPath, "*.sql"))
+				.ToList();
 		}
 
 		public void ExecCreate(bool dropIfExists) {
