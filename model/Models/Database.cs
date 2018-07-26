@@ -1342,7 +1342,7 @@ where name = @dbname
 					filePath = Path.Combine(dir, MakeFileName(o) + ".sql"),
 					script = o.ScriptCreate() + "\r\nGO\r\n"
 				}).GroupBy(c => c.filePath)
-				.ForAll(g => File.AppendAllText(g.Key, string.Join("", g.Select(i => i.script))));
+				.BetterForAll(g => File.AppendAllText(g.Key, string.Join("", g.Select(i => i.script))));
 		}
 
 		private void WriteScriptDirInParallel(string name, IScriptable[] objects, Action<TraceLevel, string> log) {
@@ -1351,7 +1351,7 @@ where name = @dbname
 			var dir = Path.Combine(Dir, name);
 			Directory.CreateDirectory(dir);
 			
-			Parallel.For(0, objects.Length, i => {
+			BetterParallel.For(0, objects.Length, i => {
 				var o = objects[i];
 
 				log(TraceLevel.Verbose, $"Scripting {name} {i} of {objects.Length}...{(i < objects.Length ? "\r" : string.Empty)}");
@@ -1398,7 +1398,7 @@ where name = @dbname
 			log?.Invoke(TraceLevel.Info, "Exporting data...");
 			var index = 0;
 
-			DataTables.AsParallel().ForAll(t => {
+			DataTables.AsParallel().BetterForAll(t => {
 				log?.Invoke(TraceLevel.Verbose, $"Exporting data from {t.Owner + "." + t.Name} (table {++index} of {DataTables.Count})...");
 				var filePathAndName = dataDir + "/" + MakeFileName(t) + ImportExportHandler.FileExtension;
 				var sw = File.CreateText(filePathAndName);
@@ -1449,7 +1449,7 @@ where name = @dbname
 
 			Directory.GetFiles(dataDir, "*" + ImportExportHandler.FileExtension)
 				.AsParallel()
-				.ForAll(f => {
+				.BetterForAll(f => {
 					var fi = new FileInfo(f);
 					var schema = "dbo";
 					var table = Path.GetFileNameWithoutExtension(fi.Name);
@@ -1569,7 +1569,7 @@ where name = @dbname
 			// foreign keys
 			if (Directory.Exists(Dir + "/foreign_keys")) {
 				log(TraceLevel.Info, "Adding foreign key constraints...");
-				Directory.GetFiles(Dir + "/foreign_keys", "*.sql").AsParallel().ForAll(f => { 
+				Directory.GetFiles(Dir + "/foreign_keys", "*.sql").AsParallel().BetterForAll(f => { 
 					try {
 						DBHelper.ExecBatchSql(Connection, File.ReadAllText(f));
 					} catch (SqlBatchException ex) {
