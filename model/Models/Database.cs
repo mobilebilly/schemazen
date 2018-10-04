@@ -1526,7 +1526,10 @@ where name = @dbname
 			var scripts = GetScripts();
 
 			var scriptContent = scripts.AsParallel()
-				.ToDictionary(s => s, File.ReadAllText);
+				.ToDictionary(
+					s => s,
+					s => BatchSqlParser.SplitBatch(File.ReadAllText(s))
+				);
 
 			var errors = new List<SqlFileException>();
 			var prevCount = -1;
@@ -1538,10 +1541,11 @@ where name = @dbname
 				errors.Clear();
 				var index = 0;
 				var total = scripts.Count;
+
 				foreach (var f in scripts.ToArray()) {
 					log(TraceLevel.Verbose, $"Executing script {++index} of {total}...{(index < total ? "\r" : string.Empty)}");
 					try {
-						DBHelper.ExecBatchSql(Connection, scriptContent[f]);
+						DBHelper.ExecBatchSqls(Connection, scriptContent[f]);
 						scripts.Remove(f);
 					} catch (SqlBatchException ex) {
 						errors.Add(new SqlFileException(f, ex));
@@ -1553,7 +1557,12 @@ where name = @dbname
 				log(TraceLevel.Info, errors.Any() ? $"{prevCount} errors unresolved. Details will follow later." : "All errors resolved, were probably dependency issues...");
 			log(TraceLevel.Info, string.Empty);
 
-			ImportData(log); // load data
+			try {
+				ImportData(log); // load data
+			} catch (Exception ex) {
+				log(TraceLevel.Error, ex.ToString());
+				throw;
+			}
 
 			if (Directory.Exists(Dir + "/after_data")) {
 				log(TraceLevel.Verbose, "Executing after-data scripts...");

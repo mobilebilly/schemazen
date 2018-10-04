@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.IO;
 using SchemaZen.Library.Models;
@@ -16,6 +17,30 @@ namespace SchemaZen.Library {
 					cm.CommandTimeout = CommandTimeout;
 					cm.CommandText = sql;
 					cm.ExecuteNonQuery();
+				}
+			}
+		}
+
+
+		public static void ExecBatchSqls(string conn, IEnumerable<string> sqls) {
+			var prevLines = 0;
+			using (var cn = new SqlConnection(conn)) {
+				cn.Open();
+				using (var cm = cn.CreateCommand()) {
+					cm.CommandTimeout = CommandTimeout;
+
+					foreach (var script in sqls) {
+						if (EchoSql) Console.WriteLine(script);
+						cm.CommandText = script;
+						try {
+							cm.ExecuteNonQuery();
+						} catch (SqlException ex) {
+							throw new SqlBatchException(ex, prevLines);
+						}
+
+						prevLines += script.Split('\n').Length;
+						prevLines += 1; // add one line for GO statement
+					}
 				}
 			}
 		}
