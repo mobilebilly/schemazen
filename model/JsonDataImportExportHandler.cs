@@ -83,7 +83,14 @@ namespace SchemaZen.Library
                             if (reader.TokenType == JsonToken.PropertyName) {
                                 var propertyName = (string) reader.Value;
                                 if (reader.Read()) {
-                                    row[propertyName] = reader.Value ?? DBNull.Value;
+
+									
+	                                if (dt.Columns[propertyName].DataType == typeof(byte[])) { 
+		                                row[propertyName] = reader.Value == null ? (object) DBNull.Value : Convert.FromBase64String(reader.Value as string);
+	                                } else {
+
+		                                row[propertyName] = reader.Value ?? DBNull.Value;
+	                                }
                                 }
                             } else {
                                 throw new DataFileException(
