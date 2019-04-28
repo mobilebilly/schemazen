@@ -84,8 +84,8 @@ namespace SchemaZen.Library {
                 dt.Columns.Add(new DataColumn(c.Name, c.SqlTypeToNativeType()));
             }
 
-            using (var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.KeepNulls | SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints))
-            {
+            using (var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.KeepNulls | SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints)) {
+	            bulk.BulkCopyTimeout = 0;
                 foreach (var colName in dt.Columns.OfType<DataColumn>().Select(c => c.ColumnName))
                     bulk.ColumnMappings.Add(colName, colName);
 
